@@ -2,6 +2,7 @@ package factory
 
 import (
 	"context"
+	"runtime"
 
 	"github.com/flyteorg/flyteidl/gen/pb-go/flyteidl/service"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/flyteorg/flytepropeller/pkg/controller/nodes/subworkflow/launchplan"
 	"github.com/flyteorg/flytepropeller/pkg/controller/nodes/task"
 
+	"github.com/flyteorg/flytestdlib/logger"
 	"github.com/flyteorg/flytestdlib/promutils"
 
 	"github.com/pkg/errors"
@@ -50,6 +52,9 @@ func (f *handlerFactory) GetHandler(kind v1alpha1.NodeKind) (interfaces.NodeHand
 }
 
 func (f *handlerFactory) Setup(ctx context.Context, executor interfaces.Node, setup interfaces.SetupContext) error {
+	pc, file, line, _ := runtime.Caller(1)
+	funcName := runtime.FuncForPC(pc).Name()
+	logger.Infof(ctx, "@@@ controller->nodes->factory->handler_factroy.go->Setup() was called by file [%v] [%v]:[%v]", file, funcName, line)
 	t, err := task.New(ctx, f.kubeClient, f.catalogClient, f.eventConfig, f.clusterID, f.scope)
 	if err != nil {
 		return err

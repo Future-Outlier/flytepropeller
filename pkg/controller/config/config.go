@@ -34,10 +34,12 @@
 package config
 
 import (
+	"context"
 	"time"
 
 	"github.com/flyteorg/flytestdlib/config"
 	"github.com/flyteorg/flytestdlib/contextutils"
+	"github.com/flyteorg/flytestdlib/logger"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -254,5 +256,6 @@ func GetConfig() *Config {
 
 // MustRegisterSubSection can be used to configure any subsections the the propeller configuration
 func MustRegisterSubSection(subSectionKey string, section config.Config) config.Section {
+	logger.Error(context.TODO(), "@@@ MustRegisterSubSection subSectionKey->[%v], section->[%v]", subSectionKey, section)
 	return configSection.MustRegisterSection(subSectionKey, section)
 }

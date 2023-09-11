@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"runtime/debug"
 	"time"
 
@@ -252,7 +253,9 @@ func (t *Handler) Setup(ctx context.Context, sCtx interfaces.SetupContext) error
 		// For every default plugin for a task type specified in flytepropeller config we validate that the plugin's
 		// static definition includes that task type as something it is registered to handle.
 		for _, tt := range p.RegisteredTaskTypes {
+			logger.Infof(ctx, "@@@ tt in p.RegisteredTaskTypes [%v] ENABLED", tt)
 			for _, defaultTaskType := range defaultForTaskTypes[cp.GetID()] {
+				logger.Infof(ctx, "@@@ defaultTaskType [%v] ENABLED", defaultTaskType)
 				if defaultTaskType == tt {
 					if existingHandler, alreadyDefaulted := t.defaultPlugins[tt]; alreadyDefaulted && existingHandler.GetID() != cp.GetID() {
 						logger.Errorf(ctx, "TaskType [%s] has multiple default handlers specified: [%s] and [%s]",
@@ -314,13 +317,16 @@ func (t *Handler) Setup(ctx context.Context, sCtx interfaces.SetupContext) error
 func (t Handler) ResolvePlugin(ctx context.Context, ttype string, executionConfig v1alpha1.ExecutionConfig) (pluginCore.Plugin, error) {
 	// If the workflow specifies plugin overrides, check to see if any of the specified plugins for that type are
 	// registered in this deployment of flytepropeller.
+	logger.Infof(ctx, "@@@ flytepropeller controller nodes task handler.go resolvePlugin ttype [%v]", ttype)
+	logger.Infof(ctx, "@@@ flytepropeller executionConfig.TaskPluginImpls[ttype] [%v]", executionConfig.TaskPluginImpls[ttype])
 	if len(executionConfig.TaskPluginImpls[ttype].PluginIDs) > 0 {
+		logger.Infof(ctx, "@@@ flytepropeller executionConfig.TaskPluginImpls[ttype] [%v]", executionConfig.TaskPluginImpls[ttype])
 		if len(t.pluginsForType[ttype]) > 0 {
 			pluginsForType := t.pluginsForType[ttype]
 			for _, pluginImplID := range executionConfig.TaskPluginImpls[ttype].PluginIDs {
 				pluginImpl := pluginsForType[pluginImplID]
 				if pluginImpl != nil {
-					logger.Debugf(ctx, "Plugin [%s] resolved for Handler type [%s]", pluginImpl.GetID(), ttype)
+					logger.Infof(ctx, "@@@ Plugin [%s] resolved for Handler type [%s]", pluginImpl.GetID(), ttype)
 					return pluginImpl, nil
 				}
 			}
@@ -335,11 +341,11 @@ func (t Handler) ResolvePlugin(ctx context.Context, ttype string, executionConfi
 
 	p, ok := t.defaultPlugins[ttype]
 	if ok {
-		logger.Debugf(ctx, "Plugin [%s] resolved for Handler type [%s]", p.GetID(), ttype)
+		logger.Infof(ctx, "@@@ Default Plugin [%s] resolved for Handler type [%s]", p.GetID(), ttype)
 		return p, nil
 	}
 	if t.defaultPlugin != nil {
-		logger.Warnf(ctx, "No plugin found for Handler-type [%s], defaulting to [%s]", ttype, t.defaultPlugin.GetID())
+		logger.Infof(ctx, "@@@ Default No plugin found for Handler-type [%s], defaulting to [%s]", ttype, t.defaultPlugin.GetID())
 		return t.defaultPlugin, nil
 	}
 	return nil, fmt.Errorf("no plugin defined for Handler type [%s] and no defaultPlugin configured", ttype)
@@ -370,6 +376,9 @@ func (t Handler) fetchPluginTaskMetrics(pluginID, taskType string) (*taskMetrics
 }
 
 func (t Handler) invokePlugin(ctx context.Context, p pluginCore.Plugin, tCtx *taskExecutionContext, ts handler.TaskNodeState) (*pluginRequestedTransition, error) {
+	pc, file, line, _ := runtime.Caller(1)
+	funcName := runtime.FuncForPC(pc).Name()
+	logger.Infof(context.TODO(), "@@@ flytepropeller handler.go Handle by [%v] [%v]:[%v]", file, funcName, line)
 	pluginTrns := &pluginRequestedTransition{}
 
 	trns, err := func() (trns pluginCore.Transition, err error) {
@@ -408,7 +417,10 @@ func (t Handler) invokePlugin(ctx context.Context, p pluginCore.Plugin, tCtx *ta
 		v = ts.PluginPhaseVersion
 	}
 	pluginTrns.ObservedTransitionAndState(trns, v, b)
-
+	logger.Infof(ctx, "@@@ pluginTrns:[%v]", pluginTrns)
+	logger.Infof(ctx, "@@@ ts:[%v]", ts)
+	logger.Infof(ctx, "@@@ pluginTrns.pInfo.Phase():[%v]", pluginTrns.pInfo.Phase())
+	logger.Infof(ctx, "@@@ ts.PluginPhase:[%v]", ts.PluginPhase)
 	// Emit the queue latency if the task has just transitioned from Queued to Running.
 	if ts.PluginPhase == pluginCore.PhaseQueued &&
 		(pluginTrns.pInfo.Phase() == pluginCore.PhaseInitializing || pluginTrns.pInfo.Phase() == pluginCore.PhaseRunning) {
@@ -518,6 +530,10 @@ func (t Handler) invokePlugin(ctx context.Context, p pluginCore.Plugin, tCtx *ta
 }
 
 func (t Handler) Handle(ctx context.Context, nCtx interfaces.NodeExecutionContext) (handler.Transition, error) {
+	pc, file, line, _ := runtime.Caller(1)
+	funcName := runtime.FuncForPC(pc).Name()
+	logger.Infof(context.TODO(), "@@@ propeller Handle was called by [%v] [%v]:[%v]", file, funcName, line)
+
 	ttype := nCtx.TaskReader().GetTaskType()
 	ctx = contextutils.WithTaskType(ctx, ttype)
 	p, err := t.ResolvePlugin(ctx, ttype, nCtx.ExecutionContext().GetExecutionConfig())
@@ -567,6 +583,7 @@ func (t Handler) Handle(ctx context.Context, nCtx interfaces.NodeExecutionContex
 		}
 	}
 
+	// TODO: Figure it out
 	occurredAt := time.Now()
 	// STEP 2: If no cache-hit and not transitioning to PhaseWaitingForCache, then lets invoke the plugin and wait for a transition out of undefined
 	if pluginTrns.execInfo.TaskNodeInfo == nil || (pluginTrns.pInfo.Phase() != pluginCore.PhaseWaitingForCache &&
@@ -847,6 +864,9 @@ func (t Handler) Finalize(ctx context.Context, nCtx interfaces.NodeExecutionCont
 }
 
 func New(ctx context.Context, kubeClient executors.Client, client catalog.Client, eventConfig *controllerConfig.EventConfig, clusterID string, scope promutils.Scope) (*Handler, error) {
+	pc, file, line, _ := runtime.Caller(1)
+	funcName := runtime.FuncForPC(pc).Name()
+	logger.Infof(ctx, "@@@ New Handler was called by file [%v] [%v]:[%v]", file, funcName, line)
 	// TODO New should take a pointer
 	async, err := catalog.NewAsyncClient(client, *catalog.GetConfig(), scope.NewSubScope("async_catalog"))
 	if err != nil {

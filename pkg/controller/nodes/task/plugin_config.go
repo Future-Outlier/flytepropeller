@@ -9,23 +9,28 @@ import (
 	"github.com/flyteorg/flytepropeller/pkg/controller/nodes/task/backoff"
 
 	"github.com/flyteorg/flyteplugins/go/tasks/pluginmachinery/core"
+	"github.com/flyteorg/flyteplugins/go/tasks/plugins/webapi/agent"
 	"github.com/flyteorg/flytestdlib/logger"
 
-	"github.com/flyteorg/flyteplugins/go/tasks/plugins/webapi/agent"
 	"github.com/flyteorg/flytepropeller/pkg/controller/nodes/task/config"
 	"github.com/flyteorg/flytepropeller/pkg/controller/nodes/task/k8s"
 )
 
+const AgentServiceKey = "agent-service"
+
 var once sync.Once
 
+// get the agent-service plugin
 func WranglePluginsAndGenerateFinalList(ctx context.Context, cfg *config.TaskPluginConfig, pr PluginRegistryIface) (enabledPlugins []core.PluginEntry, defaultForTaskTypes map[pluginID][]taskType, err error) {
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("unable to initialize plugin list, cfg is a required argument")
 	}
 
-	// Register the GRPC plugin after the config is loaded
-	once.Do(func() { agent.RegisterAgentPlugin() })
+	// once.Do(func() { sync_agent.RegisterSyncAgentPlugin() })
 	pluginsConfigMeta, err := cfg.GetEnabledPlugins()
+	once.Do(func() { agent.RegisterAgentPlugin(pluginsConfigMeta.AllDefaultForTaskTypes[AgentServiceKey]) })
+	// Register the GRPC plugin after the config is loaded
+	// once.Do(func() { agent.RegisterAgentPlugin(pluginsConfigMeta.AllDefaultForTaskTypes) })
 	if err != nil {
 		return nil, nil, err
 	}
@@ -36,6 +41,7 @@ func WranglePluginsAndGenerateFinalList(ctx context.Context, cfg *config.TaskPlu
 	}
 
 	logger.Infof(ctx, "Enabled plugins: %v", pluginsConfigMeta.EnabledPlugins.List())
+	logger.Infof(ctx, "@@@ AllDefaultForTaskTypes: [%v]", pluginsConfigMeta.AllDefaultForTaskTypes)
 	logger.Infof(ctx, "Loading core Plugins, plugin configuration [all plugins enabled: %v]", allPluginsEnabled)
 	for _, cpe := range pr.GetCorePlugins() {
 		id := strings.ToLower(cpe.ID)
@@ -54,6 +60,11 @@ func WranglePluginsAndGenerateFinalList(ctx context.Context, cfg *config.TaskPlu
 	monitorIndex := k8s.NewResourceMonitorIndex()
 
 	k8sPlugins := pr.GetK8sPlugins()
+	for i := range k8sPlugins {
+		kpe := k8sPlugins[i]
+		id := strings.ToLower(kpe.ID)
+		logger.Infof(ctx, "kpe: [%v], id: [%v]", kpe, id)
+	}
 	for i := range k8sPlugins {
 		kpe := k8sPlugins[i]
 		id := strings.ToLower(kpe.ID)

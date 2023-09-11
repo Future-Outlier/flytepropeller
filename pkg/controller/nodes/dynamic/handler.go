@@ -2,6 +2,7 @@ package dynamic
 
 import (
 	"context"
+	"runtime"
 	"time"
 
 	"github.com/flyteorg/flyteidl/gen/pb-go/flyteidl/core"
@@ -176,6 +177,10 @@ func (d dynamicNodeTaskNodeHandler) handleDynamicSubNodes(ctx context.Context, n
 // DynamicNodePhaseExecuting: The parent node has completed and finalized successfully, the sub-nodes are being handled
 // DynamicNodePhaseFailing: one or more of sub-nodes have failed and the failure is being handled
 func (d dynamicNodeTaskNodeHandler) Handle(ctx context.Context, nCtx interfaces.NodeExecutionContext) (handler.Transition, error) {
+	pc, file, line, _ := runtime.Caller(1)
+	funcName := runtime.FuncForPC(pc).Name()
+	logger.Infof(context.TODO(), "@@@ dynamic handler was called by [%v] [%v]:[%v]", file, funcName, line)
+
 	ds := nCtx.NodeStateReader().GetDynamicNodeState()
 	var err error
 	var trns handler.Transition
